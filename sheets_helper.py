@@ -5,6 +5,8 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 import pickle
+from google.auth import exceptions
+from constants import GOOGLE_SCOPES
 
 from exceptions import SheetIdNotFoundException
 
@@ -27,12 +29,18 @@ class SheetsHelper():
         if not creds or not creds.valid:
             logging.info('Credentials not found, asking user for info')
             if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
+                try:
+                    creds.refresh(Request())
+                except exceptions.RefreshError:
+                    os.unlink('token.pickle')
+                    logging.error(
+                        'Credentials could not be refreshed, possibly the authorization has been revoked.')
+                    return self.get_creds()
             else:
                 flow = InstalledAppFlow.from_client_secrets_file(
                     'credentials.json', GOOGLE_SCOPES
                 )
-                creds = flow.run_local_server(port=-1)
+                creds = flow.run_local_server(port=8080)
             with open('token.pickle', 'wb') as token:
                 pickle.dump(creds, token)
 
@@ -52,6 +60,9 @@ class SheetsHelper():
         return values
 
     def update_values(self, range_name, values, value_input_option='USER_ENTERED'):
+        if not self.__sheet_id:
+            logging.error('Sheet ID is not found')
+            raise SheetIdNotFoundException
         body = {
             'values': values
         }
